@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickNote</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>📝 QuickNote</h1>
+
+        <form action="{{ url_for('add_note') }}" method="POST" class="note-form">
+            <textarea name="content" placeholder="Escribe tu nota aquí..." required></textarea>
+            <button type="submit">Agregar nota</button>
+        </form>
+
+        <form action="{{ url_for('index') }}" method="GET" class="search-form">
+            <input type="text" name="q" placeholder="Buscar por palabra clave..." value="{{ query }}">
+            <button type="submit">Buscar</button>
+            {% if query %}
+                <a href="{{ url_for('index') }}" class="clear-link">Limpiar</a>
+            {% endif %}
+        </form>
+
+        {% if notes %}
+            <ul class="note-list">
+                {% for note in notes %}
+                    <li class="note-item">
+                        <div class="note-content">{{ note.content }}</div>
+                        <div class="note-footer">
+                            <span class="note-date">{{ note.created_at }}</span>
+                            <form action="{{ url_for('delete_note', note_id=note.id) }}" method="POST">
+                                <button type="submit" class="delete-btn">Borrar</button>
+                            </form>
+                        </div>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-message">
+                {% if query %}
+                    No se encontraron notas con "{{ query }}".
+                {% else %}
+                    Aún no tienes notas. ¡Agrega la primera!
+                {% endif %}
+            </p>
+        {% endif %}
+    </div>
+</body>
+</html>
