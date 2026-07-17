@@ -1,18 +1,27 @@
 import os
-import sqlite3
 from datetime import datetime
 
+import psycopg2
+import psycopg2.extras
+from dotenv import load_dotenv
 from flask import Flask, g, redirect, render_template, request, url_for
+
+load_dotenv()
 
 app = Flask(__name__)
 
-DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "notes.db")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "No se encontro la variable de entorno DATABASE_URL. "
+        "Define un archivo .env en local (mira .env.example) o configurala en Render."
+    )
 
 
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DATABASE)
-        g.db.row_factory = sqlite3.Row
+        g.db = psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
     return g.db
 
 
@@ -23,32 +32,19 @@ def close_db(exception=None):
         db.close()
 
 
-def init_db():
-    db = sqlite3.connect(DATABASE)
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS notes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            content TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    db.commit()
-    db.close()
-
-
 @app.route("/", methods=["GET"])
 def index():
     query = request.args.get("q", "").strip()
     db = get_db()
-    if query:
-        notes = db.execute(
-            "SELECT * FROM notes WHERE content LIKE ? ORDER BY id DESC",
-            (f"%{query}%",),
-        ).fetchall()
-    else:
-        notes = db.execute("SELECT * FROM notes ORDER BY id DESC").fetchall()
+    with db.cursor() as cur:
+        if query:
+            cur.execute(
+                "SELECT * FROM notes WHERE content ILIKE %s ORDER BY id DESC",
+                (f"%{query}%",),
+            )
+        else:
+            cur.execute("SELECT * FROM notes ORDER BY id DESC")
+        notes = cur.fetchall()
     return render_template("index.html", notes=notes, query=query)
 
 
@@ -58,10 +54,11 @@ def add_note():
     if content:
         created_at = datetime.now().strftime("%d/%m/%Y %H:%M")
         db = get_db()
-        db.execute(
-            "INSERT INTO notes (content, created_at) VALUES (?, ?)",
-            (content, created_at),
-        )
+        with db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO notes (content, created_at) VALUES (%s, %s)",
+                (content, created_at),
+            )
         db.commit()
     return redirect(url_for("index"))
 
@@ -69,12 +66,11 @@ def add_note():
 @app.route("/delete/<int:note_id>", methods=["POST"])
 def delete_note(note_id):
     db = get_db()
-    db.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    with db.cursor() as cur:
+        cur.execute("DELETE FROM notes WHERE id = %s", (note_id,))
     db.commit()
     return redirect(url_for("index"))
 
-
-init_db()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
